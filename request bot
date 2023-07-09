@@ -1,0 +1,68 @@
+import telebot
+from telebot import types
+import sqlite3
+import time
+
+
+bot = telebot.TeleBot("")
+bot.remove_webhook()
+
+
+@bot.message_handler(commands=['start'])
+def start(message):
+    if message.from_user.id not in admins_ids:
+        pass
+    else:
+        bot.send_message(message.chat.id, "Введите текст рассылки")
+        bot.register_next_step_handler(message, r)
+
+def r(message):
+    try:
+        sqlite_connection = sqlite3.connect('db.db')
+        cursor = sqlite_connection.cursor()
+
+        cursor.execute("SELECT id FROM main")
+        result = cursor.fetchall()
+
+        cursor.close()
+        sqlite_connection.close()
+
+        id_list = [row[0] for row in result]
+
+        text = message.text
+        content_type = message.content_type
+
+        for user_id in id_list:
+            if content_type == 'text':
+                bot.send_message(user_id, text)
+            elif content_type == 'photo':
+                bot.send_photo(user_id, message.photo[-1].file_id, caption=message.caption)
+            elif content_type == 'document':
+                bot.send_document(user_id, message.document.file_id, caption=message.caption)
+            elif content_type == 'video':
+                bot.send_video(user_id, message.video.file_id, caption=message.caption)
+
+    except telebot.apihelper.ApiTelegramException as e:
+        print(f"Error sending message: {e}")
+
+@bot.chat_join_request_handler()
+def make_some(message: telebot.types.ChatJoinRequest):
+    user_id = message.from_user.id
+    time.sleep(15)
+    bot.approve_chat_join_request(message.chat.id, message.from_user.id)
+
+    sqlite_connection = sqlite3.connect('db.db')
+    cursor = sqlite_connection.cursor()
+    sqlite_insert_query = f"""INSERT INTO main
+                                 (id)
+                                VALUES ({message.from_user.id});"""
+    count = cursor.execute(sqlite_insert_query)
+    sqlite_connection.commit()
+    cursor.close()
+
+    try:
+        bot.send_message(user_id, "Press <b><u>/start</u></b> to start using the bot",parse_mode = "HTML")
+    except telebot.apihelper.ApiTelegramException as e:
+        print(f"Error sending message: {e}")
+
+bot.infinity_polling()
